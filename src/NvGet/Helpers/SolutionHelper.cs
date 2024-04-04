@@ -12,6 +12,7 @@ using NvGet.Entities;
 using NvGet.Extensions;
 using NuGet.Versioning;
 using Uno.Extensions;
+using Newtonsoft.Json;
 
 namespace NvGet.Helpers
 {
@@ -72,6 +73,16 @@ namespace NvGet.Helpers
 				}
 			}
 
+			if(fileType.HasFlag(FileType.GlobalJson))
+			{
+				const FileType currentTarget = FileType.GlobalJson;
+
+				foreach(var file in await GetDirectoryFiles(ct, solutionPath, currentTarget, log))
+				{
+					packages.AddRange(await GetGlobalJsonFileReferences(ct, file, currentTarget, updateProperties));
+				}
+			}
+
 			if(fileType.HasFlag(FileType.Nuspec))
 			{
 				foreach(var f in await GetNuspecFiles(ct, solutionPath, log))
@@ -129,7 +140,16 @@ namespace NvGet.Helpers
 			else
 			{
 				var solutionFolder = Path.GetDirectoryName(solutionPath);
-				file = Path.Combine(solutionFolder, target.GetDescription());
+
+				if(target is FileType.DirectoryProps or FileType.DirectoryTargets or FileType.GlobalJson or FileType.CentralPackageManagement)
+				{
+					var matchingFiles = await FileHelper.GetFiles(ct, solutionFolder, nameFilter: target.GetDescription());
+					return matchingFiles.ToArray();
+				}
+				else
+				{
+					file = Path.Combine(solutionFolder, target.GetDescription());
+				}
 			}
 
 			if(file.HasValue() && await FileHelper.Exists(file))
@@ -182,6 +202,28 @@ namespace NvGet.Helpers
 			{
 				references = document.GetDependencies();
 			}
+
+			return references
+				.GroupBy(r => r.Id)
+				.Select(g => new PackageReference(g.Key, new NuGetVersion(g.FirstOrDefault().Version), file, target))
+				.ToArray();
+		}
+
+		private static async Task<PackageReference[]> GetGlobalJsonFileReferences(CancellationToken ct, string file, FileType target, ICollection<(string PropertyName, string PackageId)> updateProperties)
+		{
+			if(file.IsNullOrEmpty())
+			{
+				return Array.Empty<PackageReference>();
+			}
+
+			// Parse the global.json file to find all the sdks
+			var json = await FileHelper.ReadFileContent(ct, file);
+			var globalJson = JsonConvert.DeserializeObject<GlobalJson>(json);
+
+			var references = globalJson
+				?.MSBuildSdks
+				?.Select(s => new PackageIdentity(s.Key, new NuGetVersion(s.Value)))
+				.ToArray() ?? Array.Empty<PackageIdentity>();
 
 			return references
 				.GroupBy(r => r.Id)
