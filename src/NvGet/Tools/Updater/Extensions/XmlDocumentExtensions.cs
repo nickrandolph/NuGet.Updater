@@ -3,7 +3,9 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Xml;
 using Newtonsoft.Json;
+using NuGet.Common;
 using NuGet.Versioning;
+using NvGet.Entities;
 using NvGet.Extensions;
 using NvGet.Helpers;
 using NvGet.Tools.Updater.Log;
@@ -20,6 +22,8 @@ namespace NvGet.Tools.Updater.Extensions
 {
 	public static class XmlDocumentExtensions
 	{
+		public static ILogger Logger { get; set; } = ConsoleLogger.Instance;
+
 		/// <summary>
 		/// Runs an <see cref="UpdateOperation"/> on Project Properties contained in a <see cref="XmlDocument"/>.
 		/// </summary>
@@ -35,7 +39,7 @@ namespace NvGet.Tools.Updater.Extensions
 
 			var packageId = operation.PackageId;
 
-			foreach(var prop in updateProperties.Where(x=> x.PackageId == packageId))
+			foreach(var prop in updateProperties.Where(x => x.PackageId == packageId))
 			{
 				var docProp = document.SelectElements(prop.PropertyName).FirstOrDefault();
 				if(docProp is null)
@@ -85,14 +89,21 @@ namespace NvGet.Tools.Updater.Extensions
 
 				if(packageVersion.HasValue())
 				{
-					var currentOperation = operation.WithPreviousVersion(packageVersion);
-
-					if(currentOperation.ShouldProceed())
+					try
 					{
-						packageReference.SetAttributeOrChild("Version", currentOperation.UpdatedVersion.ToString());
-					}
+						var currentOperation = operation.WithPreviousVersion(packageVersion);
 
-					operations.Add(currentOperation);
+						if(currentOperation.ShouldProceed())
+						{
+							packageReference.SetAttributeOrChild("Version", currentOperation.UpdatedVersion.ToString());
+						}
+
+						operations.Add(currentOperation);
+					}
+					catch
+					{
+						Logger.LogDebug($"Ignoring {packageReference.Name} as value is set to something other than a version (eg project variable)");
+					}
 				}
 			}
 
