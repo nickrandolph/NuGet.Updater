@@ -92,7 +92,8 @@ namespace NvGet.Extensions
 			var propertyGroupVersionReferences = document
 				.SelectElements("PropertyGroup")
 				.SelectMany(pg => pg.SelectNodes("*").OfType<XmlElement>())
-				.Where(e => e.LocalName.EndsWith("Version", StringComparison.OrdinalIgnoreCase));
+				.Where(e => e.LocalName.EndsWith("Version", StringComparison.OrdinalIgnoreCase) &&
+				!e.LocalName.StartsWith("Version", StringComparison.OrdinalIgnoreCase));
 
 			foreach(var versionProperty in propertyGroupVersionReferences)
 			{
